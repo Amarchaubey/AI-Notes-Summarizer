@@ -1,0 +1,405 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Notes Summarizer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f4f6fb; }
+    .navbar-brand { font-weight: 700; letter-spacing: -.03em; }
+    .hero { background: linear-gradient(135deg, #243b8a, #5875e8); color: white; }
+    .card { border: 0; box-shadow: 0 .5rem 1.5rem rgba(33, 47, 94, .08); }
+    .summary-text { white-space: pre-line; }
+    .study-card { min-height: 140px; white-space: normal; }
+    .flow-steps { list-style: none; counter-reset: flow-step; padding: 0; }
+    .flow-steps li { counter-increment: flow-step; position: relative; padding: .8rem 1rem .8rem 3.25rem; margin-bottom: 1.5rem; border: 1px solid #dbe3f0; border-radius: .75rem; background: #fff; }
+    .flow-steps li::before { content: counter(flow-step); position: absolute; left: .85rem; top: .65rem; display: grid; place-items: center; width: 1.65rem; height: 1.65rem; border-radius: 50%; background: #3457d5; color: #fff; font-weight: 700; }
+    .flow-steps li:not(:last-child)::after { content: "↓"; position: absolute; bottom: -1.5rem; left: 1.35rem; color: #3457d5; font-weight: 700; }
+    .flow-steps li.decision { border: 2px dashed #d29b21; background: #fffaf0; }
+    .flow-steps li.decision::before { content: "?"; border-radius: .35rem; background: #d29b21; }
+    .flow-steps li.step::before { background: #198754; }
+    .job-progress { display: none; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg bg-white border-bottom">
+    <div class="container">
+      <a class="navbar-brand text-primary" href="{% url 'home' %}">AI Notes Summarizer</a>
+      <div class="d-flex align-items-center gap-3">
+        {% if user.is_authenticated %}
+          <span class="text-secondary small">Signed in as {{ user.username }}</span>
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button class="btn btn-outline-secondary btn-sm" type="submit">Log out</button>
+          </form>
+        {% else %}
+          <a class="btn btn-outline-primary btn-sm" href="{% url 'login' %}">Log in</a>
+          <a class="btn btn-primary btn-sm" href="{% url 'register' %}">Create account</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-5">
+    <section class="hero rounded-4 p-4 p-md-5 mb-4">
+      <div class="row align-items-center">
+        <div class="col-lg-8">
+          <p class="text-uppercase small fw-semibold mb-2 opacity-75">Understand more, faster</p>
+          <h1 class="display-6 fw-bold">Turn long notes into clear takeaways.</h1>
+          <p class="mb-0 opacity-75">Paste your notes or upload a text or PDF file. Your summaries stay private to your account.</p>
+        </div>
+      </div>
+    </section>
+
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <section class="card rounded-4">
+          <div class="card-body p-4">
+            <h2 class="h4 mb-1">Summarize your notes</h2>
+            <p class="text-secondary small mb-4">Up to 200,000 extracted characters. Upload UTF-8 .txt files up to 1 MB or PDFs up to 10 MB (500 pages max). Scanned PDFs use the installed Tesseract OCR engine.</p>
+            <p class="small text-primary">Large documents process in the background. The app reuses your existing summary for identical notes, and summaries stay grounded in the source chapter.</p>
+            {% if not user.is_authenticated %}
+              <div class="alert alert-info">Log in or create an account to generate and save summaries.</div>
+            {% endif %}
+            <form method="post" enctype="multipart/form-data">
+              {% csrf_token %}
+              {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+              {% endif %}
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="{{ form.notes.id_for_label }}">Paste notes</label>
+                {{ form.notes }}
+                {% for error in form.notes.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="{{ form.source_file.id_for_label }}">Upload notes</label>
+                {{ form.source_file }}
+                {% for error in form.source_file.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="{{ form.page_range.id_for_label }}">PDF pages (optional)</label>
+                {{ form.page_range }}
+                <div class="form-text">{{ form.page_range.help_text }} Processing only the pages you need is faster.</div>
+                {% for error in form.page_range.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold" for="{{ form.summary_length.id_for_label }}">Summary detail</label>
+                {{ form.summary_length }}
+              </div>
+              <div class="form-check mb-4">
+                {{ form.include_flowchart }}
+                <label class="form-check-label" for="{{ form.include_flowchart.id_for_label }}">{{ form.include_flowchart.label }}</label>
+              </div>
+              {% if user.is_authenticated %}
+                <button class="btn btn-primary px-4" type="submit">Summarize notes</button>
+              {% else %}
+                <a class="btn btn-primary px-4" href="{% url 'login' %}?next={% url 'home' %}">Log in to summarize</a>
+              {% endif %}
+            </form>
+          </div>
+        </section>
+
+        {% if processing_job %}
+          <section class="card rounded-4 mt-4 job-progress" id="job-progress"
+                   data-status-url="{% url 'summary_job_status' processing_job.pk %}"
+                   data-job-state="{{ processing_job.status }}"
+                   data-job-url="{% url 'home' %}?job={{ processing_job.pk }}">
+            <div class="card-body p-4">
+              {% if processing_job.status == "review" %}
+                <h2 class="h5">Review the extracted text</h2>
+                <p class="text-secondary">Check page order, headings, formulas, and OCR text. Correct anything that looks wrong before generating your study guide.</p>
+                <form method="post" id="review-notes-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="confirm_job" value="{{ processing_job.pk }}">
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold" for="review-notes">Extracted chapter text</label>
+                    <textarea class="form-control font-monospace" id="review-notes" name="notes" rows="16" maxlength="200000" required>{% if form.is_bound %}{{ form.notes.value }}{% else %}{{ processing_job.notes_text }}{% endif %}</textarea>
+                    <div class="form-text"><span id="review-character-count">{{ processing_job.notes_text|length }}</span> / 200,000 characters. You can edit the text before continuing.</div>
+                    {% for error in form.notes.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold" for="review-summary-length">Summary detail</label>
+                    <select class="form-select" id="review-summary-length" name="summary_length">
+                      <option value="short" {% if processing_job.summary_length == "short" %}selected{% endif %}>Short</option>
+                      <option value="balanced" {% if processing_job.summary_length == "balanced" %}selected{% endif %}>Balanced</option>
+                      <option value="detailed" {% if processing_job.summary_length == "detailed" %}selected{% endif %}>Detailed</option>
+                    </select>
+                  </div>
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="review-flowchart" name="include_flowchart" {% if processing_job.include_flowchart %}checked{% endif %}>
+                    <label class="form-check-label" for="review-flowchart">Also create a flowchart</label>
+                  </div>
+                  <button class="btn btn-primary" type="submit">Looks good — summarize this text</button>
+                </form>
+              {% else %}
+                <h2 class="h5">Preparing your study notes</h2>
+                <p class="mb-2" id="job-stage">{{ processing_job.stage }}</p>
+                <div class="progress" role="progressbar" aria-label="Processing status">
+                  <div class="progress-bar progress-bar-striped progress-bar-animated w-100"></div>
+                </div>
+                <div class="alert alert-danger mt-3 mb-0" id="job-error" hidden>{{ processing_job.error }}</div>
+              {% endif %}
+            </div>
+          </section>
+        {% endif %}
+
+        {% if latest_summary %}
+          <section class="card rounded-4 mt-4" aria-live="polite">
+            <div class="card-body p-4">
+              <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                  <p class="text-uppercase text-primary small fw-semibold mb-1">Your summary</p>
+                  <h2 class="h4 mb-0">{{ latest_summary.title }}</h2>
+                  <small class="text-secondary">Source-grounded key points · {{ latest_summary.get_summary_length_display }} detail</small>
+                </div>
+                <a class="btn btn-outline-primary btn-sm flex-shrink-0" href="{% url 'download_summary' latest_summary.pk %}">Download PDF</a>
+              </div>
+              <div class="summary-text">{{ latest_summary.summary_text }}</div>
+              <form method="post" class="mt-3">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-secondary" type="submit" name="refresh_summary" value="{{ latest_summary.pk }}">Rebuild summary and study aids from original notes</button>
+                <p class="small text-secondary mt-2 mb-0">Use this on older saved summaries made with the previous AI. Refreshing clears their old quiz scores and flashcard schedules.</p>
+              </form>
+            </div>
+          </section>
+
+          {% if latest_summary.flashcards %}
+            <section class="card rounded-4 mt-4">
+              <div class="card-body p-4">
+                <h2 class="h4 mb-1">Flashcards</h2>
+                <p class="text-secondary small">Answer from memory, reveal the source-grounded explanation, then rate how well you recalled it.</p>
+                <div class="row g-3">
+                  {% for card in latest_summary.flashcards %}
+                    <div class="col-md-6" id="flashcard-{{ forloop.counter0 }}">
+                      <div class="border rounded-3 bg-white h-100 p-3">
+                        <button class="btn btn-light border text-start w-100 p-3 study-card" type="button" aria-pressed="false" data-front="{{ card.prompt }}" data-back="{{ card.answer }}">
+                          <span class="d-block small text-primary fw-semibold mb-2">TAP TO REVEAL</span>
+                          <span class="study-card-content">{{ card.prompt }}</span>
+                        </button>
+                        <form method="post" action="{% url 'review_flashcard' latest_summary.pk forloop.counter0 %}" class="mt-3">
+                          {% csrf_token %}
+                          <span class="small d-block mb-2">How well did you recall it?</span>
+                          <div class="d-flex gap-1 flex-wrap">
+                            {% for rating, label in review_ratings %}
+                              <button class="btn btn-sm {% if rating < 3 %}btn-outline-warning{% else %}btn-outline-success{% endif %}" type="submit" name="quality" value="{{ rating }}">{{ label }}</button>
+                            {% endfor %}
+                          </div>
+                        </form>
+                        {% for review in latest_summary.card_reviews.all %}
+                          {% if review.card_index == forloop.parentloop.counter0 %}
+                            <p class="small text-secondary mt-2 mb-0">Next review: {{ review.due_at|date:"M j, Y" }}</p>
+                          {% endif %}
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </section>
+          {% endif %}
+
+          {% if latest_summary.quiz %}
+            <section class="card rounded-4 mt-4">
+              <div class="card-body p-4">
+                <h2 class="h4 mb-1">Quick recall quiz</h2>
+                <p class="text-secondary small">Choose an answer for each question, then check your score.</p>
+                <form method="post" action="{% url 'submit_quiz' latest_summary.pk %}">
+                  {% csrf_token %}
+                  {% for question in latest_summary.quiz %}
+                    <fieldset class="mb-4">
+                      <legend class="h6">{{ forloop.counter }}. {{ question.prompt }}</legend>
+                      {% for option in question.options %}
+                        <div class="form-check">
+                          <input class="form-check-input" type="radio" name="question_{{ forloop.parentloop.counter0 }}" id="quiz-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" value="{{ option }}" required>
+                          <label class="form-check-label" for="quiz-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">{{ option }}</label>
+                        </div>
+                      {% endfor %}
+                    </fieldset>
+                  {% endfor %}
+                  <button class="btn btn-primary" type="submit">Submit quiz and save score</button>
+                </form>
+                {% if latest_summary.quiz_attempts.all %}
+                  <p class="small text-secondary mt-3 mb-0">Best score: {% with best=latest_summary.quiz_attempts.all|dictsortreversed:"percentage"|first %}{{ best.score }}/{{ best.total }} ({{ best.percentage }}%){% endwith %}</p>
+                {% endif %}
+              </div>
+            </section>
+          {% endif %}
+
+          {% if latest_summary.flowchart %}
+            <section class="card rounded-4 mt-4">
+              <div class="card-body p-4">
+                <h2 class="h4 mb-1">Flowchart</h2>
+                <p class="text-secondary small">Steps are shown in order; dashed amber nodes mark possible decision points inferred from words such as “if” or “unless.” Check the source notes for exact branches.</p>
+                <ol class="flow-steps mb-0">
+                  {% for step in latest_summary.flowchart %}<li class="{{ step.type }}">{{ step.label }}{% if step.type == "decision" %}<span class="badge text-bg-warning ms-2">Decision</span>{% endif %}</li>{% endfor %}
+                </ol>
+              </div>
+            </section>
+          {% endif %}
+        {% endif %}
+      </div>
+
+      <aside class="col-lg-5">
+        {% if user.is_authenticated %}
+          <section class="card rounded-4">
+            <div class="card-body p-4">
+              <h2 class="h5 mb-3">Your recent summaries</h2>
+              {% for saved in saved_summaries %}
+                <div class="border-bottom py-3 {% if forloop.first %}pt-0{% endif %}">
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="min-w-0">
+                      <h3 class="h6 mb-1 text-truncate"><a class="text-decoration-none" href="{% url 'home' %}?summary={{ saved.pk }}">{{ saved.title }}</a></h3>
+                      <small class="text-secondary">{{ saved.created_at|date:"M j, Y · g:i a" }}</small>
+                    </div>
+                    <div class="text-end">
+                      {% with attempt=saved.quiz_attempts.first %}
+                        {% if attempt %}<small class="text-secondary d-block">Latest quiz: {{ attempt.percentage }}%</small>{% endif %}
+                      {% endwith %}
+                      <a class="small text-nowrap" href="{% url 'download_summary' saved.pk %}">PDF</a>
+                    </div>
+                  </div>
+                </div>
+              {% empty %}
+                <p class="text-secondary mb-0">Summaries you create will appear here.</p>
+              {% endfor %}
+            </div>
+          </section>
+          <section class="card rounded-4 mt-4">
+            <div class="card-body p-4">
+              <h2 class="h5 mb-3">Flashcards due today</h2>
+              {% for review in due_reviews %}
+                <div class="border-bottom py-2">
+                  <a class="small fw-semibold" href="{% url 'home' %}?summary={{ review.summary_id }}">{{ review.summary.title }}</a>
+                  {% for card in review.summary.flashcards %}
+                    {% if forloop.counter0 == review.card_index %}<p class="small mb-2">{{ card.prompt }}</p>{% endif %}
+                  {% endfor %}
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'home' %}?summary={{ review.summary_id }}#flashcard-{{ review.card_index }}">Review card {{ review.card_index|add:1 }}</a>
+                </div>
+              {% empty %}
+                <p class="text-secondary small mb-0">No cards due. Rate a card after reviewing it to schedule the next one.</p>
+              {% endfor %}
+            </div>
+          </section>
+          {% if recent_attempts %}
+            <section class="card rounded-4 mt-4">
+              <div class="card-body p-4">
+                <h2 class="h5 mb-3">Quiz progress</h2>
+                {% if topic_progress %}
+                  <h3 class="small fw-semibold">Topics to revisit</h3>
+                  {% for topic in topic_progress %}
+                    <p class="small mb-2">
+                      <span class="badge {% if topic.missed > topic.correct %}text-bg-warning{% else %}text-bg-success{% endif %}">
+                        {% if topic.missed > topic.correct %}Review{% else %}Strong{% endif %}
+                      </span>
+                      {{ topic.topic }}
+                      <span class="text-secondary">({{ topic.correct }} right · {{ topic.missed }} missed)</span>
+                    </p>
+                  {% endfor %}
+                {% endif %}
+                {% for attempt in recent_attempts %}
+                  <div class="d-flex justify-content-between gap-2 border-bottom py-2">
+                    <a class="small text-truncate" href="{% url 'home' %}?summary={{ attempt.summary_id }}">{{ attempt.summary.title }}</a>
+                    <span class="small fw-semibold text-nowrap">{{ attempt.score }}/{{ attempt.total }} · {{ attempt.percentage }}%</span>
+                  </div>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+        {% else %}
+          <section class="card rounded-4">
+            <div class="card-body p-4">
+              <h2 class="h5">Your notes, saved privately</h2>
+              <p class="text-secondary mb-3">Create an account to keep a personal history of your notes and download summaries whenever you need them.</p>
+              <a class="btn btn-outline-primary" href="{% url 'register' %}">Create your free account</a>
+            </div>
+          </section>
+        {% endif %}
+      </aside>
+    </div>
+    <footer class="text-center small text-secondary mt-5">AI-generated summaries may omit details. Review important notes before relying on them.</footer>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const jobProgress = document.getElementById("job-progress");
+    if (jobProgress) {
+      jobProgress.style.display = "block";
+      const notesPreview = document.getElementById("review-notes");
+      if (notesPreview) {
+        const characterCount = document.getElementById("review-character-count");
+        notesPreview.addEventListener("input", () => {
+          characterCount.textContent = notesPreview.value.length;
+        });
+      }
+      const stage = document.getElementById("job-stage");
+      const error = document.getElementById("job-error");
+      const state = jobProgress.dataset.jobState;
+      if (state === "review") {
+        document.getElementById("review-notes").focus();
+      } else if (state === "complete") {
+        window.location.replace(
+          `{% url 'home' %}?summary={{ processing_job.result_summary_id }}`
+        );
+      } else if (state === "failed") {
+        document.querySelector(".progress-bar").classList.remove(
+          "progress-bar-animated",
+          "progress-bar-striped"
+        );
+        error.hidden = false;
+      } else {
+        const poll = async () => {
+          try {
+            const response = await fetch(jobProgress.dataset.statusUrl, {
+              headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            if (!response.ok) throw new Error("Could not check the job status.");
+            const result = await response.json();
+            if (result.status === "review") {
+              window.location.replace(`${jobProgress.dataset.jobUrl}#review-notes`);
+              return;
+            }
+            stage.textContent = result.stage;
+            if (result.status === "complete") {
+              window.location.replace(result.result_url);
+              return;
+            }
+            if (result.status === "failed") {
+              error.textContent = result.error;
+              error.hidden = false;
+              document.querySelector(".progress-bar").classList.remove(
+                "progress-bar-animated",
+                "progress-bar-striped"
+              );
+              return;
+            }
+            window.setTimeout(poll, 1500);
+          } catch (pollError) {
+            stage.textContent = `${pollError.message} Retrying…`;
+            window.setTimeout(poll, 3000);
+          }
+        };
+        window.setTimeout(poll, 500);
+      }
+    }
+
+    document.querySelectorAll(".study-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const showingAnswer = card.getAttribute("aria-pressed") === "true";
+        card.setAttribute("aria-pressed", String(!showingAnswer));
+        card.querySelector(".study-card-content").textContent = showingAnswer
+          ? card.dataset.front
+          : card.dataset.back;
+      });
+    });
+
+  </script>
+</body>
+</html>

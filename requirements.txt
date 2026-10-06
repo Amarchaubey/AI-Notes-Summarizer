@@ -1,0 +1,7 @@
+Django>=5.2,<6.0
+reportlab>=4.2
+PyMuPDF>=1.24
+dj-database-url>=2.2
+gunicorn>=23.0
+psycopg[binary]>=3.2
+whitenoise>=6.8
